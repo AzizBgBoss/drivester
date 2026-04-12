@@ -57,7 +57,8 @@ public class Game {
 
         protected void paint(Graphics g) {
             // Cursed technique: scanline rendering
-            // It is used by skilled jujutsu sorcerers to create powerful illusions that can
+            // It is used by skilled jujutsu programmers to create powerful illusions that
+            // can
             // deceive the senses of their opponents.
             // By manipulating the perception of reality, they can create pseudo 3D effects
             // and immersive environments that can disorient and overwhelm their opponents.
@@ -67,6 +68,10 @@ public class Game {
             g.setColor(0x87CEEB); // sky blue
             g.fillRect(0, 0, screenW, horizonY);
 
+            float camDist = 1.5f; // how far behind the car
+            float camX = playerCar.x - (float) Math.cos(Math.toRadians(playerCar.angle)) * camDist;
+            float camY = playerCar.y - (float) Math.sin(Math.toRadians(playerCar.angle)) * camDist;
+
             for (int py = horizonY; py < screenH; py++) {
                 float depth = (float) (screenH / 2) / (py - horizonY + 1);
 
@@ -75,10 +80,10 @@ public class Game {
                     float offset = (px - screenW / 2f) * depth / (screenW / 2f);
 
                     // strafe direction is perpendicular to angle
-                    float worldX = playerCar.x
+                    float worldX = camX
                             + (float) Math.cos(Math.toRadians(playerCar.angle)) * depth
                             - (float) Math.sin(Math.toRadians(playerCar.angle)) * offset;
-                    float worldY = playerCar.y
+                    float worldY = camY
                             + (float) Math.sin(Math.toRadians(playerCar.angle)) * depth
                             + (float) Math.cos(Math.toRadians(playerCar.angle)) * offset;
 
@@ -96,6 +101,14 @@ public class Game {
                     g.drawLine(px, py, px, py);
                 }
             }
+
+            int carW = 60, carH = 20;
+            int carX = screenW / 2 - carW / 2;
+            int carY = screenH * 9 / 10 - carH - 10;
+
+            // body
+            g.setColor(0xCC0000);
+            g.fillRect(carX, carY, carW, carH);
 
             // Debug info
             g.setColor(0);
