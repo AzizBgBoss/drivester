@@ -1,7 +1,5 @@
 package com.azizbgboss.game;
 
-import java.sql.Time;
-
 import javax.microedition.lcdui.Canvas;
 import javax.microedition.lcdui.Command;
 import javax.microedition.lcdui.CommandListener;
@@ -19,7 +17,7 @@ public class Game implements CommandListener {
             { 0, 0, 0, 0, 0, 0, 0, 1, 2, 1 },
             { 0, 0, 0, 0, 0, 0, 0, 1, 2, 1 },
             { 0, 0, 0, 0, 0, 0, 0, 1, 0, 1 },
-            { 1, 1, 1, 1, 1, 1, 1, 1, 0, 1 }, // -> North
+            { 1, 1, 1, 1, 1, 1, 1, 1, 0, 1 },
             { 0, 0, 0, 0, 0, 0, 0, 2, 0, 1 },
             { 0, 0, 0, 0, 0, 1, 1, 1, 0, 1 },
             { 0, 0, 0, 0, 0, 1, 0, 1, 1, 1 },
@@ -27,189 +25,212 @@ public class Game implements CommandListener {
             { 0, 0, 0, 0, 0, 1, 0, 0, 0, 2 },
     };
 
-    public Car playerCar = new Car(4, 5, map); // Start on the road
+    public Car playerCar = new Car(4, 5, map);
 
     public Game(drivester midlet) {
         this.midlet = midlet;
         canvas = new gameCanvas();
-
         gameExit = new Command("Exit", Command.EXIT, 0);
         canvas.addCommand(gameExit);
         canvas.setCommandListener(this);
     }
 
-    public Canvas getCanvas() {
-        return canvas;
-    }
+    public Canvas getCanvas() { return canvas; }
 
     public void commandAction(Command c, Displayable d) {
-        if (d == canvas) {
-            if (c == gameExit) {
-                midlet.quit();
-            }
-        }
+        if (d == canvas && c == gameExit) midlet.quit();
     }
 
     public class gameCanvas extends Canvas {
         final int screenW = getWidth();
         final int screenH = getHeight();
-        final int horizonY = (int) (screenH * 0.5f);
-        private int scale = 1; // how many pixels per map cell at depth=1
+        final int horizonY = screenH / 2;
         final int fps = 15;
         final int frameTime = 1000 / fps;
 
-        private void rebuildScreen() {
-        }
+        // preallocated sort buffers
+        private int[] tileOrder = new int[map.length * map[0].length];
+        private int[] tileDist  = new int[map.length * map[0].length];
+        private int[] sx = new int[4];
+        private int[] sy = new int[4];
+        private float[] fwdC  = new float[4];
+        private float[] sideC = new float[4];
 
         public gameCanvas() {
             setFullScreenMode(true);
-
             new Thread(new Runnable() {
                 public void run() {
                     while (true) {
                         repaint();
                         playerCar.update();
-                        try {
-                            Thread.sleep(frameTime);
-                        } catch (InterruptedException e) {
-                        }
+                        try { Thread.sleep(frameTime); } catch (InterruptedException e) {}
                     }
                 }
             }).start();
         }
 
         protected void paint(Graphics g) {
-            // Cursed technique: scanline rendering
-            // It is used by skilled jujutsu programmers to create powerful illusions that
-            // can deceive the senses of their opponents.
-            // By manipulating the perception of reality, they can create pseudo 3D effects
-            // and immersive environments that can disorient and overwhelm their opponents.
-            // Such techniques require a high level of skill and mastery, but is easy on the
-            // host machine as it doesn't require complex 3D rendering calculations.
-
             long startTime = System.currentTimeMillis();
 
-            g.setColor(0x87CEEB); // sky blue
-            g.fillRect(0, 0, screenW, horizonY);
+            int mapH = map.length;
+            int mapW = map[0].length;
+            int halfW = screenW / 2;
+            int halfH = screenH / 2;
 
             float cosA = playerCar.cosTable[playerCar.angle];
             float sinA = playerCar.sinTable[playerCar.angle];
+            float camX = playerCar.x - cosA * 1.5f;
+            float camY = playerCar.y - sinA * 1.5f;
 
-            float camDist = 1.5f; // how far behind the car
-            float camX = playerCar.x - cosA * camDist;
-            float camY = playerCar.y - sinA * camDist;
+            // sky
+            g.setColor(0x87CEEB);
+            g.fillRect(0, 0, screenW, horizonY);
 
-            float screenWH = screenW / 2f; // Cheap way to perform better
-            int lastColor = -1;
+            // ground base
+            g.setColor(0x228B22);
+            g.fillRect(0, horizonY, screenW, screenH - horizonY);
 
-            for (int py = horizonY; py < screenH; py += scale) {
-                float depth = (float) (screenH / 2) / (py - horizonY + 1);
+            // --- Painter's algorithm: sort far-to-near ---
+            int tileCount = mapH * mapW;
+            for (int i = 0; i < tileCount; i++) {
+                int mx = i % mapW;
+                int my = i / mapW;
+                tileOrder[i] = i;
+                float dx = (mx + 0.5f) - camX;
+                float dy = (my + 0.5f) - camY;
+                tileDist[i] = (int)(dx * dx + dy * dy);
+            }
+            // insertion sort descending (far first)
+            for (int i = 1; i < tileCount; i++) {
+                int key = tileOrder[i];
+                int keyDist = tileDist[key];
+                int j = i - 1;
+                while (j >= 0 && tileDist[tileOrder[j]] < keyDist) {
+                    tileOrder[j + 1] = tileOrder[j];
+                    j--;
+                }
+                tileOrder[j + 1] = key;
+            }
 
-                for (int px = 0; px < screenW; px += scale) {
-                    // offset from screen center, scaled by depth
-                    float offset = (px - screenWH) * depth / screenWH;
+            // --- Draw tiles far to near ---
+            for (int t = 0; t < tileCount; t++) {
+                int idx = tileOrder[t];
+                int mx = idx % mapW;
+                int my = idx / mapW;
+                int cell = map[my][mx];
 
-                    // strafe direction is perpendicular to angle
-                    float worldX = camX
-                            + cosA * depth
-                            - sinA * offset;
-                    float worldY = camY
-                            + sinA * depth
-                            + cosA * offset;
-
-                    int mapX = (int) worldX;
-                    int mapY = (int) worldY;
-
-                    int color;
-                    if (mapX < 0 || mapY < 0 || mapX >= map[0].length || mapY >= map.length) {
-                        color = 0xFFFF00;
+                // corners TL(0) TR(1) BR(2) BL(3)
+                // 0=(mx,  my  ) 1=(mx+1,my  )
+                // 3=(mx,  my+1) 2=(mx+1,my+1)
+                boolean anyVisible = false;
+                for (int i = 0; i < 4; i++) {
+                    float wx = (i == 0 || i == 3) ? mx : mx + 1;
+                    float wy = (i == 0 || i == 1) ? my : my + 1;
+                    float dx = wx - camX;
+                    float dy = wy - camY;
+                    fwdC[i]  = dx * cosA + dy * sinA;
+                    sideC[i] = -dx * sinA + dy * cosA;
+                    if (fwdC[i] > 0.1f) {
+                        anyVisible = true;
+                        sx[i] = halfW    + (int)(sideC[i] * halfH / fwdC[i]);
+                        sy[i] = horizonY + (int)((float)halfH / fwdC[i]);
                     } else {
-                        switch (map[mapY][mapX]) {
-                            case 0:
-                                color = 0x228B22; // terrain - forest green
-                                break;
-                            case 1:
-                                color = 0x808080; // road - gray
-                                break;
-                            case 2:
-                                color = 0x8B4513; // building - saddle brown
-                                break;
-                            default:
-                                color = 0xFF00FF; // magenta for debugging
-                        }
+                        sx[i] = sideC[i] < 0 ? -9999 : 9999;
+                        sy[i] = screenH + 9999;
+                    }
+                }
+                if (!anyVisible) continue;
+
+                int minSx = Math.min(Math.min(sx[0], sx[1]), Math.min(sx[2], sx[3]));
+                int maxSx = Math.max(Math.max(sx[0], sx[1]), Math.max(sx[2], sx[3]));
+                if (maxSx < 0 || minSx > screenW) continue;
+
+                // floor
+                int floorColor;
+                switch (cell) {
+                    case 1:  floorColor = 0x808080; break;
+                    case 2:  floorColor = 0x333333; break;
+                    default: floorColor = 0x228B22; break;
+                }
+                g.setColor(floorColor);
+                g.fillTriangle(sx[0], sy[0], sx[1], sy[1], sx[2], sy[2]);
+                g.fillTriangle(sx[0], sy[0], sx[2], sy[2], sx[3], sy[3]);
+
+                // building walls
+                if (cell == 2) {
+                    float dx0 = (mx + 0.5f) - camX;
+                    float dy0 = (my + 0.5f) - camY;
+                    float fwdCenter = dx0 * cosA + dy0 * sinA;
+                    if (fwdCenter <= 0.1f) continue;
+
+                    int wallH = (int)(2.0f * halfH / fwdCenter);
+                    if (wallH <= 0 || wallH > screenH * 4) continue;
+
+                    int ty0 = sy[0] - wallH;
+                    int ty1 = sy[1] - wallH;
+                    int ty2 = sy[2] - wallH;
+                    int ty3 = sy[3] - wallH;
+
+                    int wallColor     = 0x666666 + 0x111111 * ((mx + my) % 3);
+                    int wallColorSide = wallColor - 0x222222;
+
+                    // north face: visible when cam is north of tile center
+                    if (camY < my + 0.5f) {
+                        g.setColor(wallColor);
+                        g.fillTriangle(sx[0], sy[0], sx[1], sy[1], sx[1], ty1);
+                        g.fillTriangle(sx[0], sy[0], sx[1], ty1,   sx[0], ty0);
+                    }
+                    // south face: visible when cam is south of tile center
+                    if (camY > my + 0.5f) {
+                        g.setColor(wallColor);
+                        g.fillTriangle(sx[3], sy[3], sx[2], sy[2], sx[2], ty2);
+                        g.fillTriangle(sx[3], sy[3], sx[2], ty2,   sx[3], ty3);
+                    }
+                    // west face: visible when cam is west of tile center
+                    if (camX < mx + 0.5f) {
+                        g.setColor(wallColorSide);
+                        g.fillTriangle(sx[0], sy[0], sx[3], sy[3], sx[3], ty3);
+                        g.fillTriangle(sx[0], sy[0], sx[3], ty3,   sx[0], ty0);
+                    }
+                    // east face: visible when cam is east of tile center
+                    if (camX > mx + 0.5f) {
+                        g.setColor(wallColorSide);
+                        g.fillTriangle(sx[1], sy[1], sx[2], sy[2], sx[2], ty2);
+                        g.fillTriangle(sx[1], sy[1], sx[2], ty2,   sx[1], ty1);
                     }
 
-                    if (color != lastColor) {
-                        g.setColor(color);
-                        lastColor = color;
-                    }
-
-                    // Special drawing cases
-                    if (mapX >= 0 && mapY >= 0 && mapX < map[0].length && mapY < map.length) {
-                        if (map[mapY][mapX] == 2) {
-                            int buildingHeight = (int) ((250) * (((mapX + mapY) % 4) + 1) / depth);
-                            int roofHeight = buildingHeight / 10;
-                            g.setColor(0x111111 + (0x222222) * ((mapX + mapY) % 5));
-                            g.fillRect(px, py - buildingHeight - roofHeight, scale, roofHeight);
-                            g.setColor((0x222222) * ((mapX + mapY) % 5));
-                            g.fillRect(px, py - buildingHeight, scale, buildingHeight);
-                        } else {
-                            g.fillRect(px, py, scale, scale);
-                        }
-                    } else {
-                        g.fillRect(px, py, scale, scale);
-                    }
+                    // roof
+                    g.setColor(0x999999);
+                    g.fillTriangle(sx[0], ty0, sx[1], ty1, sx[2], ty2);
+                    g.fillTriangle(sx[0], ty0, sx[2], ty2, sx[3], ty3);
                 }
             }
 
+            // car sprite
             int carW = 60, carH = 20;
             int carX = screenW / 2 - carW / 2;
             int carY = screenH * 9 / 10 - carH - 10;
-
-            // body
             g.setColor(0xCC0000);
             g.fillRect(carX, carY, carW, carH);
 
-            // Debug info
-            g.setColor(0);
-            TinyFont.drawString(g, "Pos: (" + playerCar.x + ", " + playerCar.y + ")", 0, 0);
-            TinyFont.drawString(g, "Speed: " + playerCar.speed, 0, TinyFont.GLYPH_H * 1);
-            TinyFont.drawString(g, "Angle: " + playerCar.angle, 0, TinyFont.GLYPH_H * 2);
-            TinyFont.drawString(g, "Scale: " + scale, 0, TinyFont.GLYPH_H * 3);
-            TinyFont.drawString(g, "FPS: " + (1000 / (System.currentTimeMillis() - startTime)), 0,
-                    TinyFont.GLYPH_H * 4);
+            // debug
+            g.setColor(0xFFFFFF);
+            TinyFont.drawString(g, "Pos:(" + (int)playerCar.x + "," + (int)playerCar.y + ")", 0, 0);
+            TinyFont.drawString(g, "Ang:" + playerCar.angle, 0, TinyFont.GLYPH_H);
+            long elapsed = System.currentTimeMillis() - startTime;
+            TinyFont.drawString(g, "FPS:" + (elapsed > 0 ? 1000 / elapsed : 99), 0, TinyFont.GLYPH_H * 2);
         }
 
         public void keyPressed(int keyCode) {
-            int gameAction = getGameAction(keyCode);
-            switch (gameAction) {
-                case LEFT:
-                    playerCar.turnLeft();
-                    break;
-                case RIGHT:
-                    playerCar.turnRight();
-                    break;
-                case UP:
-                    playerCar.accelerate();
-                    break;
-                case DOWN:
-                    playerCar.decelerate();
-                    break;
-                case GAME_A:
-                    scale += 1;
-                    if (scale > 16)
-                        scale = 16;
-                    break;
-                case GAME_B:
-                    scale -= 1;
-                    if (scale < 1)
-                        scale = 1;
-                    break;
+            int a = getGameAction(keyCode);
+            switch (a) {
+                case LEFT:  playerCar.turnLeft();   break;
+                case RIGHT: playerCar.turnRight();  break;
+                case UP:    playerCar.accelerate(); break;
+                case DOWN:  playerCar.decelerate(); break;
             }
         }
 
-        public void keyRepeated(int keyCode) {
-            keyPressed(keyCode);
-        }
+        public void keyRepeated(int keyCode) { keyPressed(keyCode); }
     }
 }
