@@ -38,13 +38,13 @@ public class Car {
     }
 
     public void turnLeft() {
-        angle -= 1;
+        angle -= (int) (100 * speed);
         if (angle < 0)
             angle += 360;
     }
 
     public void turnRight() {
-        angle += 1;
+        angle += (int) (100 * speed);
         if (angle >= 360)
             angle -= 360;
     }
