@@ -119,8 +119,8 @@ public class Game implements CommandListener {
             // stars (with angle)
             g.setColor(0xFFFFFF);
             for (int i = 0; i < 100; i++) { // TODO: better disperse the stars
-                int starX = (int) ((i * 123 + playerCar.angle * 5) % screenW);
-                int starY = (int) ((i * 321 + playerCar.angle * 3) % horizonY);
+                int starX = (int) ((i * 123 - playerCar.angle * 5) % screenW);
+                int starY = (int) ((i * 321 - playerCar.angle * 3) % horizonY);
                 g.fillRect(starX, starY, 1, 1);
             }
 
