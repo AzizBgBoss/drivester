@@ -75,7 +75,7 @@ public class Game implements CommandListener {
 
         private int renderDistance = 10;
 
-        // preallocated sort buffers
+        // Preallocated sort buffers for visible tiles only.
         private int[] tileOrder = new int[map.length * map[0].length];
         private int[] tileDist = new int[map.length * map[0].length];
         private int[] sx = new int[4];
@@ -113,110 +113,135 @@ public class Game implements CommandListener {
             float camY = playerCar.y - sinA * 1.5f;
 
             // sky
-            g.setColor(0x87CEEB);
+            g.setColor(0x08051A);
             g.fillRect(0, 0, screenW, horizonY);
 
+            // stars (with angle)
+            g.setColor(0xFFFFFF);
+            for (int i = 0; i < 100; i++) { // TODO: better disperse the stars
+                int starX = (int) ((i * 123 + playerCar.angle * 5) % screenW);
+                int starY = (int) ((i * 321 + playerCar.angle * 3) % horizonY);
+                g.fillRect(starX, starY, 1, 1);
+            }
+
             // ground base
-            g.setColor(0x228B22);
+            g.setColor(0x05070D);
             g.fillRect(0, horizonY, screenW, screenH - horizonY);
 
-            // --- Draw far-to-near by Y-coordinate (no sorting needed) ---
+            // Gather only visible nearby tiles, then sort them by camera depth.
             int maxDist = renderDistance * renderDistance;
-            for (int my = mapH - 1; my >= 0; my--) {
-                for (int mx = mapW - 1; mx >= 0; mx--) {
+            int visibleCount = 0;
+            for (int my = 0; my < mapH; my++) {
+                for (int mx = 0; mx < mapW; mx++) {
                     float cdx = (mx + 0.5f) - camX;
                     float cdy = (my + 0.5f) - camY;
                     if (cdx * cdx + cdy * cdy >= maxDist)
                         continue;
-                    
-                    int cell = map[my][mx];
-                    // corners TL(0) TR(1) BR(2) BL(3)
-                    // 0=(mx, my ) 1=(mx+1,my )
-                    // 3=(mx, my+1) 2=(mx+1,my+1)
-                    boolean anyVisible = false;
-                    for (int i = 0; i < 4; i++) {
-                        float wx = (i == 0 || i == 3) ? mx : mx + 1;
-                        float wy = (i == 0 || i == 1) ? my : my + 1;
-                        float dx = wx - camX;
-                        float dy = wy - camY;
-                        fwdC[i] = dx * cosA + dy * sinA;
-                        sideC[i] = -dx * sinA + dy * cosA;
-                        if (fwdC[i] > 0.1f) {
-                            anyVisible = true;
-                            sx[i] = halfW + (int) (sideC[i] * halfH / fwdC[i]);
-                            sy[i] = horizonY + (int) ((float) halfH / fwdC[i]);
-                        } else {
-                            sx[i] = sideC[i] < 0 ? -9999 : 9999;
-                            sy[i] = screenH + 9999;
-                        }
-                    }
-                    if (!anyVisible)
+
+                    float fwdCenter = cdx * cosA + cdy * sinA;
+                    if (fwdCenter <= 0.1f)
                         continue;
 
-                    int minSx = Math.min(Math.min(sx[0], sx[1]), Math.min(sx[2], sx[3]));
-                    int maxSx = Math.max(Math.max(sx[0], sx[1]), Math.max(sx[2], sx[3]));
-                    if (maxSx < 0 || minSx > screenW)
-                        continue;
-
-                    // floor
-                    int floorColor;
-                    switch (cell) {
-                        case 1:
-                            floorColor = 0x808080;
-                            break;
-                        case 2:
-                            floorColor = 0x333333;
-                            break;
-                        default:
-                            floorColor = 0x228B22;
-                            break;
+                    int encoded = my * mapW + mx;
+                    int depthKey = (int) (fwdCenter * 1024);
+                    int pos = visibleCount;
+                    while (pos > 0 && tileDist[pos - 1] < depthKey) {
+                        tileDist[pos] = tileDist[pos - 1];
+                        tileOrder[pos] = tileOrder[pos - 1];
+                        pos--;
                     }
-                    g.setColor(floorColor);
-                    g.fillTriangle(sx[0], sy[0], sx[1], sy[1], sx[2], sy[2]);
-                    g.fillTriangle(sx[0], sy[0], sx[2], sy[2], sx[3], sy[3]);
+                    tileDist[pos] = depthKey;
+                    tileOrder[pos] = encoded;
+                    visibleCount++;
+                }
+            }
 
-                    // building walls
-                    if (cell == 2) {
-                        float dx0 = (mx + 0.5f) - camX;
-                        float dy0 = (my + 0.5f) - camY;
-                        float fwdCenter = dx0 * cosA + dy0 * sinA;
-                        if (fwdCenter <= 0.1f)
-                            continue;
+            for (int t = 0; t < visibleCount; t++) {
+                int encoded = tileOrder[t];
+                int my = encoded / mapW;
+                int mx = encoded % mapW;
 
-                        float wallH = 0.5f + 0.5f * ((mx + my)) % 3;
+                int cell = map[my][mx];
+                // corners TL(0) TR(1) BR(2) BL(3)
+                // 0=(mx, my ) 1=(mx+1,my )
+                // 3=(mx, my+1) 2=(mx+1,my+1)
+                boolean anyVisible = false;
+                for (int i = 0; i < 4; i++) {
+                    float wx = (i == 0 || i == 3) ? mx : mx + 1;
+                    float wy = (i == 0 || i == 1) ? my : my + 1;
+                    float dx = wx - camX;
+                    float dy = wy - camY;
+                    fwdC[i] = dx * cosA + dy * sinA;
+                    sideC[i] = -dx * sinA + dy * cosA;
+                    if (fwdC[i] > 0.1f) {
+                        anyVisible = true;
+                        sx[i] = halfW + (int) (sideC[i] * halfH / fwdC[i]);
+                        sy[i] = horizonY + (int) ((float) halfH / fwdC[i]);
+                    } else {
+                        sx[i] = sideC[i] < 0 ? -9999 : 9999;
+                        sy[i] = screenH + 9999;
+                    }
+                }
+                if (!anyVisible)
+                    continue;
 
-                        int ty0 = fwdC[0] > 0.1f ? sy[0] - (int) (wallH * halfH / fwdC[0]) : sy[0];
-                        int ty1 = fwdC[1] > 0.1f ? sy[1] - (int) (wallH * halfH / fwdC[1]) : sy[1];
-                        int ty2 = fwdC[2] > 0.1f ? sy[2] - (int) (wallH * halfH / fwdC[2]) : sy[2];
-                        int ty3 = fwdC[3] > 0.1f ? sy[3] - (int) (wallH * halfH / fwdC[3]) : sy[3];
+                int minSx = Math.min(Math.min(sx[0], sx[1]), Math.min(sx[2], sx[3]));
+                int maxSx = Math.max(Math.max(sx[0], sx[1]), Math.max(sx[2], sx[3]));
+                if (maxSx < 0 || minSx > screenW)
+                    continue;
 
-                        int wallColor = 0x666666 + 0x111111 * ((mx + my) % 3);
-                        int wallColorSide = wallColor - 0x222222;
+                // floor
+                int floorColor;
+                switch (cell) {
+                    case 1:
+                        floorColor = 0x161B2F;
+                        break;
+                    case 2:
+                        floorColor = 0x090C18;
+                        break;
+                    default:
+                        floorColor = 0x07111A;
+                        break;
+                }
+                g.setColor(floorColor);
+                g.fillTriangle(sx[0], sy[0], sx[1], sy[1], sx[2], sy[2]);
+                g.fillTriangle(sx[0], sy[0], sx[2], sy[2], sx[3], sy[3]);
 
-                        // north face: visible when cam is north of tile center
-                        if (camY < my + 0.5f) {
-                            g.setColor(wallColor);
-                            g.fillTriangle(sx[0], sy[0], sx[1], sy[1], sx[1], ty1);
-                            g.fillTriangle(sx[0], sy[0], sx[1], ty1, sx[0], ty0);
-                        }
-                        // south face: visible when cam is south of tile center
-                        if (camY > my + 0.5f) {
-                            g.setColor(wallColor);
-                            g.fillTriangle(sx[3], sy[3], sx[2], sy[2], sx[2], ty2);
-                            g.fillTriangle(sx[3], sy[3], sx[2], ty2, sx[3], ty3);
-                        }
-                        // west face: visible when cam is west of tile center
-                        if (camX < mx + 0.5f) {
-                            g.setColor(wallColorSide);
-                            g.fillTriangle(sx[0], sy[0], sx[3], sy[3], sx[3], ty3);
-                            g.fillTriangle(sx[0], sy[0], sx[3], ty3, sx[0], ty0);
-                        }
-                        // east face: visible when cam is east of tile center
-                        if (camX > mx + 0.5f) {
-                            g.setColor(wallColorSide);
-                            g.fillTriangle(sx[1], sy[1], sx[2], sy[2], sx[2], ty2);
-                            g.fillTriangle(sx[1], sy[1], sx[2], ty2, sx[1], ty1);
-                        }
+                // building walls
+                if (cell == 2) {
+                    float wallH = 0.5f + 0.5f * ((mx + my)) % 3;
+
+                    int ty0 = fwdC[0] > 0.1f ? sy[0] - (int) (wallH * halfH / fwdC[0]) : sy[0];
+                    int ty1 = fwdC[1] > 0.1f ? sy[1] - (int) (wallH * halfH / fwdC[1]) : sy[1];
+                    int ty2 = fwdC[2] > 0.1f ? sy[2] - (int) (wallH * halfH / fwdC[2]) : sy[2];
+                    int ty3 = fwdC[3] > 0.1f ? sy[3] - (int) (wallH * halfH / fwdC[3]) : sy[3];
+
+                    int wallColor = ((mx + my) & 1) == 0 ? 0x24E6F5 : 0xFF2FA3;
+                    int wallColorSide = ((mx + my) & 1) == 0 ? 0x128A99 : 0x8A1B58;
+
+                    // north face: visible when cam is north of tile center
+                    if (camY < my + 0.5f) {
+                        g.setColor(wallColor);
+                        g.fillTriangle(sx[0], sy[0], sx[1], sy[1], sx[1], ty1);
+                        g.fillTriangle(sx[0], sy[0], sx[1], ty1, sx[0], ty0);
+                    }
+                    // south face: visible when cam is south of tile center
+                    if (camY > my + 0.5f) {
+                        g.setColor(wallColor);
+                        g.fillTriangle(sx[3], sy[3], sx[2], sy[2], sx[2], ty2);
+                        g.fillTriangle(sx[3], sy[3], sx[2], ty2, sx[3], ty3);
+                    }
+                    // west face: visible when cam is west of tile center
+                    if (camX < mx + 0.5f) {
+                        g.setColor(wallColorSide);
+                        g.fillTriangle(sx[0], sy[0], sx[3], sy[3], sx[3], ty3);
+                        g.fillTriangle(sx[0], sy[0], sx[3], ty3, sx[0], ty0);
+                    }
+                    // east face: visible when cam is east of tile center
+                    if (camX > mx + 0.5f) {
+                        g.setColor(wallColorSide);
+                        g.fillTriangle(sx[1], sy[1], sx[2], sy[2], sx[2], ty2);
+                        g.fillTriangle(sx[1], sy[1], sx[2], ty2, sx[1], ty1);
                     }
                 }
             }
