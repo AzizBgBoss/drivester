@@ -163,7 +163,7 @@ public class Game implements CommandListener {
                     float fwdCenter = dx0 * cosA + dy0 * sinA;
                     if (fwdCenter <= 0.1f) continue;
 
-                    int wallH = (int)(2.0f * halfH / fwdCenter);
+                    int wallH = (int)((0.5f + 0.5f * ((mx + my)) % 4) * halfH / fwdCenter);
                     if (wallH <= 0 || wallH > screenH * 4) continue;
 
                     int ty0 = sy[0] - wallH;
