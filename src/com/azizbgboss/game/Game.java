@@ -1,5 +1,9 @@
 package com.azizbgboss.game;
 
+// Drivester - A simple 3D driving game for Java ME with late night cyberpunk vibes
+// Made by AzizBgBoss
+// https://github.com/AzizBgBoss/drivester
+
 import javax.microedition.lcdui.Canvas;
 import javax.microedition.lcdui.Command;
 import javax.microedition.lcdui.CommandListener;
@@ -120,7 +124,7 @@ public class Game implements CommandListener {
             g.setColor(0xFFFFFF);
             for (int i = 0; i < 100; i++) { // TODO: better disperse the stars
                 int starX = (int) ((i * 123 - playerCar.angle * 5) % screenW);
-                int starY = (int) ((i * 321 - playerCar.angle * 3) % horizonY);
+                int starY = (int) ((i * 321) % horizonY);
                 g.fillRect(starX, starY, 1, 1);
             }
 
@@ -216,9 +220,35 @@ public class Game implements CommandListener {
                     int ty2 = fwdC[2] > 0.1f ? sy[2] - (int) (wallH * halfH / fwdC[2]) : sy[2];
                     int ty3 = fwdC[3] > 0.1f ? sy[3] - (int) (wallH * halfH / fwdC[3]) : sy[3];
 
-                    int wallColor = ((mx + my) & 1) == 0 ? 0x24E6F5 : 0xFF2FA3;
-                    int wallColorSide = ((mx + my) & 1) == 0 ? 0x128A99 : 0x8A1B58;
+                    // TODO: fix colors that dont match the cyberpunk vibe
+                    int colorVariant = (mx * 3 + my * 5) & 3;
+                    int wallColor;
+                    int wallColorSide;
+                    switch (colorVariant) {
+                        case 0:
+                            wallColor = 0x24E6F5;
+                            wallColorSide = 0x128A99;
+                            break;
+                        case 1:
+                            wallColor = 0xFF2FA3;
+                            wallColorSide = 0x8A1B58;
+                            break;
+                        case 2:
+                            wallColor = 0xFFD166;
+                            wallColorSide = 0xB38A2E;
+                            break;
+                        default:
+                            wallColor = 0x7CFF6B;
+                            wallColorSide = 0x3D8F34;
+                            break;
+                    }
 
+                    // TODO: add some more details like windows (but be careful with performance and
+                    // clarity)
+                    // TODO: also fix face desicion, example: when cam is 0, show left face of
+                    // buildings on the right, which is correct, but also left buildings show left
+                    // side, somewhat incorrect
+                    
                     // north face: visible when cam is north of tile center
                     if (camY < my + 0.5f) {
                         g.setColor(wallColor);
@@ -252,7 +282,6 @@ public class Game implements CommandListener {
             int carY = screenH * 9 / 10 - carH - 10;
             g.setColor(0xAA0000);
             g.fillRect(carX, carY, carW, carH);
-            
 
             // debug
             g.setColor(0xFFFFFF);
