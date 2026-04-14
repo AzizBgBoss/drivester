@@ -53,6 +53,19 @@ public class Game implements CommandListener {
 
     public Car playerCar = new Car(4, 5, map);
 
+    private static final int[] STARS_X = new int[80];
+    private static final int[] STARS_Y = new int[80];
+    static {
+        // LCG pseudo-random to scatter stars naturally across the sky
+        int seed = 0xDEADBEEF;
+        for (int i = 0; i < 80; i++) {
+            seed = seed * 1664525 + 1013904223;
+            STARS_X[i] = (seed >>> 23) & 0x1FF; // 0..511
+            seed = seed * 1664525 + 1013904223;
+            STARS_Y[i] = (seed >>> 25) & 0x7F; // 0..127 (clamped to horizonY in paint)
+        }
+    }
+
     public Game(drivester midlet) {
         this.midlet = midlet;
         canvas = new gameCanvas();
@@ -120,12 +133,21 @@ public class Game implements CommandListener {
             g.setColor(0x08051A);
             g.fillRect(0, 0, screenW, horizonY);
 
-            // stars (with angle)
+            // stars (with angle
+            // FIXME: when angles goes from 0 to 359, the stars change their whole positions
+            // instead of just shifting a bit
             g.setColor(0xFFFFFF);
-            for (int i = 0; i < 100; i++) { // TODO: better disperse the stars
-                int starX = (int) ((i * 123 - playerCar.angle * 5) % screenW);
-                int starY = (int) ((i * 321) % horizonY);
-                g.fillRect(starX, starY, 1, 1);
+            int angleShift = playerCar.angle * 2; // pixels of scroll per degree
+            for (int i = 0; i < 80; i++) {
+                // parallax: stars at even indices scroll at full rate, odd at half
+                int parallax = (i & 1) == 0 ? angleShift : angleShift / 2;
+                int sx2 = ((STARS_X[i] - parallax) % screenW + screenW) % screenW;
+                int sy2 = STARS_Y[i] % horizonY;
+                // vary brightness: every 5th star is slightly bigger
+                if (i % 5 == 0)
+                    g.fillRect(sx2, sy2, 2, 2);
+                else
+                    g.fillRect(sx2, sy2, 1, 1);
             }
 
             // ground base
@@ -227,28 +249,25 @@ public class Game implements CommandListener {
                     switch (colorVariant) {
                         case 0:
                             wallColor = 0x24E6F5;
-                            wallColorSide = 0x128A99;
                             break;
                         case 1:
                             wallColor = 0xFF2FA3;
-                            wallColorSide = 0x8A1B58;
                             break;
                         case 2:
                             wallColor = 0xFFD166;
-                            wallColorSide = 0xB38A2E;
                             break;
                         default:
                             wallColor = 0x7CFF6B;
-                            wallColorSide = 0x3D8F34;
                             break;
                     }
+                    wallColorSide = Math.max(0, wallColor - 0x202020); // simple shading for sides
 
                     // TODO: add some more details like windows (but be careful with performance and
                     // clarity)
                     // TODO: also fix face desicion, example: when cam is 0, show left face of
                     // buildings on the right, which is correct, but also left buildings show left
                     // side, somewhat incorrect
-                    
+
                     // north face: visible when cam is north of tile center
                     if (camY < my + 0.5f) {
                         g.setColor(wallColor);
